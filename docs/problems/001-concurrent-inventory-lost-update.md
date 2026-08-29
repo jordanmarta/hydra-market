@@ -192,49 +192,198 @@ O problema é que a validação e a atualização não formam uma operação at�
 
 ## Alternativas consideradas
 
-Ainda não avaliadas.
+### 1. Mutex na aplicação
 
-Possíveis alternativas a investigar:
+Uma possibilidade seria proteger o trecho crítico com um `sync.Mutex` no Go:
 
-- atualização atômica no PostgreSQL;
-- SELECT ... FOR UPDATE dentro de uma transação;
-- optimistic locking com controle de versão;
-- mutex na aplicação.
+GetStock
+→ lock
+→ validar estoque
+→ atualizar estoque
+→ unlock
 
----
+Isso impediria que duas goroutines da MESMA instância executassem simultaneamente a alteração de estoque.
 
-## Decisão
+Problema:
 
-Pendente.
+Em produção provavelmente teremos múltiplas instâncias:
 
-A solução será escolhida após comparação das alternativas e seus respectivos trade-offs.
+Hydra Instance A
+Hydra Instance B
+Hydra Instance C
 
----
+Cada processo possui sua própria memória e, portanto, seu próprio mutex.
 
-## Validação
+Exemplo:
 
-Pendente.
+Request 1 → Instance A → Mutex A
+Request 2 → Instance B → Mutex B
 
-Após implementar a solução, o mesmo experimento deverá ser executado novamente.
+Os dois mutexes podem ser adquiridos ao mesmo tempo.
 
-Para o cenário:
+Portanto, o mutex resolve concorrência dentro de um único processo, mas não coordena múltiplas instâncias da aplicação.
 
-Estoque inicial: 10
-Requisições: 50
-
-o comportamento esperado será:
-
-10 × sucesso
-40 × rejeição por estoque insuficiente
-
-e:
-
-Estoque final: 0
+Por isso ele não é uma boa solução para proteger um estado compartilhado armazenado no PostgreSQL.
 
 ---
 
-## Lições aprendidas
+### 2. Optimistic Locking
 
-Pendente.
+Outra alternativa seria adicionar uma versão ao estoque:
 
-Esta seção será concluída após a implementação e validação da solução.
+product_id | quantity | version
+1          | 10       | 5
+
+A aplicação primeiro lê:
+
+quantity = 10
+version = 5
+
+Depois tenta atualizar:
+
+UPDATE inventory
+SET
+    quantity = 9,
+    version = 6
+WHERE product_id = 1
+  AND version = 5;
+
+Se outra requisição tiver alterado esse registro antes:
+
+version = 6
+
+o UPDATE não modifica nenhuma linha.
+
+Isso significa:
+
+"o estado que você leu já mudou."
+
+Nesse caso a aplicação pode:
+
+- buscar novamente o estado;
+- recalcular;
+- tentar novamente;
+- ou retornar conflito.
+
+Essa solução FUNCIONARIA.
+
+Trade-off:
+
+Ela adiciona controle de versão e normalmente exige lógica de retry/conflito na aplicação.
+
+É especialmente interessante quando conflitos concorrentes são relativamente raros.
+
+---
+
+### 3. Pessimistic Locking — SELECT FOR UPDATE
+
+Também poderíamos fazer:
+
+BEGIN;
+
+SELECT quantity
+FROM inventory
+WHERE product_id = 1
+FOR UPDATE;
+
+validar estoque
+
+UPDATE inventory ...
+
+COMMIT;
+
+O `FOR UPDATE` bloqueia aquela linha para alterações concorrentes enquanto a transação estiver aberta.
+
+Se outra transação tentar pegar a mesma linha com `FOR UPDATE`, ela terá que esperar.
+
+Exemplo:
+
+Transaction A
+→ bloqueia inventory/product=1
+
+Transaction B
+→ tenta bloquear product=1
+→ espera
+
+Transaction A
+→ atualiza
+→ COMMIT
+→ libera lock
+
+Transaction B
+→ continua
+→ agora enxerga o novo estoque
+
+Essa solução também FUNCIONARIA.
+
+Trade-off:
+
+Mantemos um lock durante a transação, aumentando contenção e exigindo cuidado com:
+
+- duração da transação;
+- deadlocks;
+- throughput;
+- ordem de aquisição de locks.
+
+É especialmente útil quando precisamos ler um estado e executar várias operações relacionadas garantindo que ninguém o altere durante aquele fluxo.
+
+---
+
+### 4. UPDATE condicional atômico
+
+Foi a solução escolhida.
+
+Em vez de:
+
+SELECT
+→ validar na aplicação
+→ calcular
+→ UPDATE
+
+fazemos tudo em uma única instrução:
+
+UPDATE inventory
+SET
+    quantity = quantity - $2,
+    updated_at = NOW()
+WHERE product_id = $1
+  AND quantity >= $2
+RETURNING quantity;
+
+A condição:
+
+quantity >= $2
+
+e a alteração:
+
+quantity = quantity - $2
+
+fazem parte da mesma operação executada pelo PostgreSQL.
+
+Quando o estoque acaba, nenhuma linha atende à condição e nenhum UPDATE acontece.
+
+Essa solução também funciona com múltiplas instâncias da aplicação porque a coordenação ocorre onde o estado compartilhado realmente existe: no banco.
+
+---
+
+## Por que escolhemos UPDATE atômico?
+
+As quatro abordagens atacam problemas de concorrência, mas com características diferentes.
+
+Mutex:
+simples, porém limitado a uma única instância.
+
+Optimistic Locking:
+distribuído e válido, mas adiciona versionamento e tratamento de conflito/retry.
+
+SELECT FOR UPDATE:
+forte e válido, mas mantém lock durante uma transação e é mais adequado quando várias operações precisam ser protegidas juntas.
+
+UPDATE condicional:
+resolve exatamente nossa necessidade atual em uma única operação atômica e com pouca complexidade adicional.
+
+Para o problema atual:
+
+"decrementar estoque somente se ainda existir quantidade suficiente"
+
+o UPDATE condicional é a solução mais simples entre as alternativas avaliadas.
