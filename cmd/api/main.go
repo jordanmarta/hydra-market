@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jordanmarta/hydra-market.git/internal/inventory"
+	"github.com/jordanmarta/hydra-market.git/internal/order"
 	"github.com/jordanmarta/hydra-market.git/internal/product"
 )
 
@@ -27,7 +29,18 @@ func main() {
 	fmt.Println("database connection established")
 
 	productRepository := product.NewRepository(db)
+	inventoryRepository := inventory.NewRepository(db)
+	orderRepository := order.NewRepository(db)
+
+	orderService := order.NewService(
+		orderRepository,
+		productRepository,
+		inventoryRepository,
+	)
+
+	orderHandler := order.NewHandler(orderService)
 	productHandler := product.NewHandler(productRepository)
+	inventoryHandler := inventory.NewHandler(inventoryRepository)
 
 	mux := http.NewServeMux()
 
@@ -37,6 +50,8 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /products", productHandler.Create)
+	mux.HandleFunc("PUT /inventory/{id}", inventoryHandler.SetStock)
+	mux.HandleFunc("POST /orders", orderHandler.Create)
 
 	fmt.Println("hydra-market listening on :8080")
 

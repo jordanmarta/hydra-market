@@ -43,3 +43,32 @@ func (r *Repository) Create(ctx context.Context, product *Product) error {
 
 	return nil
 }
+
+func (r *Repository) GetByID(ctx context.Context, id int64) (*Product, error) {
+	query := `
+		SELECT
+			id,
+			name,
+			description,
+			price,
+			currency_code
+		FROM products
+		WHERE id = $1;
+	`
+
+	var product Product
+
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&product.ID,
+		&product.Name,
+		&product.Description,
+		&product.Price,
+		&product.CurrencyCode,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("get product by id: %w", err)
+	}
+
+	return &product, nil
+}
