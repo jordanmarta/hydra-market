@@ -39,19 +39,17 @@ func (s *Service) Create(ctx context.Context, productID int64, quantity int) (*O
 		return nil, fmt.Errorf("get product: %w", err)
 	}
 
-	currentStock, err := s.inventoryRepository.GetStock(ctx, productID)
+	stockDecreased, err := s.inventoryRepository.DecreaseStock(
+		ctx,
+		productID,
+		quantity,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("get stock: %w", err)
+		return nil, fmt.Errorf("decreased stock: %w", err)
 	}
 
-	if currentStock < quantity {
+	if !stockDecreased {
 		return nil, ErrInsufficientStock
-	}
-
-	newStock := currentStock - quantity
-
-	if err := s.inventoryRepository.SetStock(ctx, productID, newStock); err != nil {
-		return nil, fmt.Errorf("update stock: %w", err)
 	}
 
 	order := &Order{
