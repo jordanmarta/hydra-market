@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/jordanmarta/hydra-market.git/internal/inventory"
 	"github.com/jordanmarta/hydra-market.git/internal/product"
@@ -40,31 +39,17 @@ func (s *Service) Create(ctx context.Context, productID int64, quantity int) (*O
 		return nil, fmt.Errorf("get product: %w", err)
 	}
 
-	currentStock, err := s.inventoryRepository.GetStock(ctx, productID)
+	stockDecreased, err := s.inventoryRepository.DecreaseStock(
+		ctx,
+		productID,
+		quantity,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("get stock: %w", err)
+		return nil, fmt.Errorf("decreased stock: %w", err)
 	}
 
-	log.Printf(
-		"[RACE] READ  product=%d stock=%d",
-		productID,
-		currentStock,
-	)
-
-	if currentStock < quantity {
+	if !stockDecreased {
 		return nil, ErrInsufficientStock
-	}
-
-	newStock := currentStock - quantity
-
-	log.Printf(
-		"[RACE] WRITE product=%d stock=%d",
-		productID,
-		newStock,
-	)
-
-	if err := s.inventoryRepository.SetStock(ctx, productID, newStock); err != nil {
-		return nil, fmt.Errorf("update stock: %w", err)
 	}
 
 	order := &Order{

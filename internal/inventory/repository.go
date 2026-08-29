@@ -3,6 +3,7 @@ package inventory
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 )
 
@@ -41,7 +42,10 @@ func (r *Repository) SetStock(
 	return nil
 }
 
-func (r *Repository) GetStock(ctx context.Context, productID int64) (int, error) {
+func (r *Repository) GetStock(
+	ctx context.Context,
+	productID int64,
+) (int, error) {
 	query := `
 		SELECT quantity
 		FROM inventory
@@ -56,4 +60,39 @@ func (r *Repository) GetStock(ctx context.Context, productID int64) (int, error)
 	}
 
 	return quantity, nil
+}
+
+func (r *Repository) DecreaseStock(
+	ctx context.Context,
+	productID int64,
+	quantity int,
+) (bool, error) {
+	query := `
+		UPDATE inventory
+		SET
+			quantity = quantity - $2,
+			updated_at = NOW()
+		WHERE product_id = $1
+		  AND quantity >= $2
+		RETURNING quantity;
+	`
+
+	var remainingStock int
+
+	err := r.db.QueryRowContext(
+		ctx,
+		query,
+		productID,
+		quantity,
+	).Scan(&remainingStock)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("decrease stock: %w", err)
+	}
+
+	return true, nil
 }
