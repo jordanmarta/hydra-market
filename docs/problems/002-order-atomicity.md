@@ -107,3 +107,131 @@ sua alteração já está confirmada no PostgreSQL.
 A falha posterior no `INSERT INTO orders` não participa de uma transação externa
 capaz de desfazer o decremento. Por isso, operações individualmente corretas não
 formam uma unidade atômica para o caso de uso completo.
+
+
+## Alternativas consideradas
+
+### 1. Compensação manual
+
+Depois de uma falha na criação do pedido, a aplicação poderia executar uma operação inversa para devolver a quantidade ao estoque.
+
+Essa abordagem pode ser necessária quando as operações pertencem a bancos ou serviços diferentes, mas não oferece atomicidade real. A compensação também pode falhar, exige idempotência e cria uma janela em que o estado permanece inconsistente.
+
+Como `inventory`, `orders` e `order_items` estão no mesmo PostgreSQL, esse custo não se justifica para o estado atual do Hydra.
+
+### 2. Transação local PostgreSQL
+
+O PostgreSQL pode executar todas as escritas dentro da mesma transação:
+
+```text
+BEGIN
+→ decrementar estoque
+→ criar order
+→ criar order_items
+COMMIT
+```
+
+Se qualquer operação falhar, `ROLLBACK` desfaz todas as alterações realizadas desde o `BEGIN`. Essa alternativa fornece a propriedade de atomicidade necessária usando o banco que já coordena todo o estado envolvido.
+
+### 3. Cada repository controla sua própria transação
+
+Uma transação no `InventoryRepository` e outra no `OrderRepository` não resolveriam o problema:
+
+```text
+transação de inventory → COMMIT
+transação de order     → ROLLBACK
+```
+
+O estoque continuaria reduzido. Uma transação interna no `OrderRepository` poderia tornar `orders` e `order_items` atômicos entre si, mas ainda não incluiria o estoque.
+
+Além disso, cada repository conhece apenas sua parte da persistência e não sabe quando o caso de uso completo terminou.
+
+### 4. Transaction boundary coordenada pelo service
+
+O `order.Service.Create` conhece todas as operações que formam a compra. Ele pode iniciar uma transação e fornecer a mesma `*sql.Tx` aos repositories de inventory e order.
+
+Os repositories continuam responsáveis pelos seus SQLs. O service passa a ser responsável apenas por decidir quando a unidade de negócio deve confirmar ou desfazer suas alterações.
+
+## Decisão
+
+Foi escolhida uma transação local PostgreSQL coordenada pelo `order.Service.Create`.
+
+Essa decisão combina as alternativas 2 e 4:
+
+- o PostgreSQL fornece `BEGIN`, `COMMIT` e `ROLLBACK`;
+- o service define a transaction boundary do caso de uso;
+- `InventoryRepository.DecreaseStock` participa por meio de `*sql.Tx`;
+- `OrderRepository.Create` usa a mesma `*sql.Tx` para inserir `orders` e todos os `order_items`.
+
+Não foi criado um Transaction Manager ou Unit of Work genérico. O service recebe `*sql.DB` diretamente e explicita o ciclo de vida da transação. Esse acoplamento foi aceito por ser simples, visível e compatível com o tamanho atual do projeto.
+
+## Implementação conceitual
+
+```text
+buscar produto
+→ BeginTx
+→ defer Rollback
+→ DecreaseStock(tx)
+→ CreateOrder(tx)
+→ CreateOrderItems(tx)
+→ Commit
+```
+
+O rollback deferido protege todos os retornos antecipados, incluindo estoque insuficiente e erros de persistência. O commit acontece explicitamente apenas depois que todas as operações terminam e seu erro também é propagado.
+
+O produto continua sendo consultado antes do `BeginTx`. Isso mantém a transação curta e é suficiente para o comportamento atual, no qual não existe fluxo de alteração concorrente de preço ou moeda.
+
+## Trade-offs
+
+### Benefícios
+
+- atomicidade real entre estoque, order e items;
+- ausência de operações de compensação;
+- transaction boundary visível no caso de uso;
+- SQL permanece nos repositories de cada domínio;
+- solução usa apenas recursos já disponíveis no PostgreSQL e em `database/sql`.
+
+### Custos e limitações
+
+- o service passa a depender diretamente de `database/sql`;
+- métodos transacionais dos repositories recebem `*sql.Tx`;
+- a transação mantém uma conexão do pool ocupada até commit ou rollback;
+- operações lentas dentro da transação aumentariam contenção;
+- a solução depende de todos os dados envolvidos estarem no mesmo PostgreSQL.
+
+Se inventory e order forem separados em bancos ou serviços diferentes, uma transação local não poderá coordená-los. Nesse cenário futuro, compensação, reservas, idempotência ou padrões distribuídos deverão ser avaliados a partir do problema concreto. Eles não são necessários para a arquitetura atual.
+
+## Validação após a correção
+
+O mesmo script e a mesma falha controlada usados na reprodução foram executados novamente:
+
+```text
+Before:
+  Stock:  10
+  Orders: 165
+
+After:
+  HTTP status: 500
+  Stock:       10
+  Orders:      165
+```
+
+O pedido continuou falhando com HTTP 500 e nenhum item foi criado, mas o estoque permaneceu em 10. O rollback preservou o estado anterior.
+
+O fluxo normal também foi validado manualmente sem a constraint temporária. A API retornou sucesso, o pedido e seu item foram persistidos e o estoque foi decrementado, confirmando o caminho de commit.
+
+O script passou a reconhecer os dois resultados conhecidos:
+
+- `INCONSISTENCY CONFIRMED`: pedido falha e estoque diminui;
+- `ATOMICITY PRESERVED`: pedido falha e estoque permanece igual.
+
+## Lições aprendidas
+
+- atomicidade de uma instrução SQL não implica atomicidade do caso de uso;
+- abrir uma transação não basta: todas as queries precisam usar a mesma `*sql.Tx`;
+- a transaction boundary deve acompanhar a unidade de negócio;
+- repositories diferentes podem participar da mesma transação sem misturar seus SQLs;
+- rollback é o comportamento seguro padrão e commit deve ser uma decisão explícita;
+- erros de `BeginTx` e `Commit` fazem parte do resultado do caso de uso;
+- transação local e compensação resolvem contextos diferentes;
+- abstrações como Unit of Work devem surgir de uma dor observada, não apenas da possibilidade de uso futuro.

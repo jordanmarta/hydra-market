@@ -17,7 +17,7 @@ O código é organizado por domínio:
 - `docs/problems`: registro de problemas técnicos investigados;
 - `docs/adr`: espaço reservado para decisões arquiteturais.
 
-A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui uma camada de service para coordenar produto, estoque e persistência do pedido. A composição é manual em `cmd/api/main.go`. A conexão com o banco e a porta HTTP estão fixas no código.
+A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui uma camada de service para coordenar produto, estoque e persistência do pedido. Esse service também controla a transação local PostgreSQL do caso de uso, compartilhada pelos repositories por meio de `*sql.Tx`. A composição é manual em `cmd/api/main.go`. A conexão com o banco e a porta HTTP estão fixas no código.
 
 ## Funcionalidades existentes
 
@@ -27,7 +27,8 @@ A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui u
 - criação de pedido com um único produto;
 - captura de preço e moeda do produto no item do pedido;
 - rejeição de compra sem estoque suficiente;
-- decremento atômico de estoque sob concorrência.
+- decremento atômico de estoque sob concorrência;
+- criação transacional de estoque, pedido e itens.
 
 ## Endpoints
 
@@ -43,11 +44,14 @@ A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui u
 1. `POST /orders` recebe `product_id` e `quantity`.
 2. O service rejeita quantidades menores ou iguais a zero.
 3. O produto é consultado para obter identificador, preço e moeda.
-4. O estoque é decrementado por um `UPDATE` condicional atômico.
-5. Se não houver estoque suficiente, a API retorna `409 Conflict`.
-6. Um pedido com status `CREATED` é inserido em `orders`.
-7. Um item com produto, quantidade, preço unitário e moeda é inserido em `order_items`.
-8. O pedido criado é retornado com `201 Created`.
+4. O service inicia uma transação PostgreSQL.
+5. O estoque é decrementado por um `UPDATE` condicional usando a transação.
+6. Se não houver estoque suficiente, a API retorna `409 Conflict` e a transação é desfeita.
+7. Um pedido com status `CREATED` é inserido em `orders` usando a mesma transação.
+8. Um item com produto, quantidade, preço unitário e moeda é inserido em `order_items` usando a mesma transação.
+9. O service confirma a transação e o pedido criado é retornado com `201 Created`.
+
+Qualquer falha depois do início da transação provoca rollback e preserva o estado anterior.
 
 O modelo de pedido suporta uma lista de itens, mas o endpoint atual cria somente um item por pedido.
 
@@ -68,18 +72,17 @@ RETURNING quantity;
 
 A validação e o decremento agora são uma operação atômica coordenada pelo banco, inclusive quando existem múltiplas instâncias da aplicação. A investigação completa está em `docs/problems/001-concurrent-inventory-lost-update.md`.
 
+## Problema 002 — concluído
+
+O fluxo de compra decrementava o estoque antes de persistir o pedido, sem uma transação compartilhada. Uma falha controlada no `INSERT INTO orders` produziu HTTP 500, manteve a quantidade de pedidos e reduziu o estoque de 10 para 9.
+
+A solução foi criar uma transação local PostgreSQL na boundary do `order.Service.Create`. O service inicia a transação, os repositories de inventory e order executam todas as escritas por meio da mesma `*sql.Tx`, e o commit ocorre somente depois da criação completa do pedido. Qualquer erro provoca rollback.
+
+Após a correção, o mesmo experimento produziu HTTP 500, manteve a quantidade de pedidos e preservou o estoque em 10. O fluxo normal de compra também foi validado. A investigação completa está em `docs/problems/002-order-atomicity.md`.
+
 ## Dívidas e problemas conhecidos
 
-- O decremento de estoque e a criação do pedido não pertencem à mesma transação.
-- A criação de `orders` e de seus `order_items` também não é transacional.
-- Uma falha após o decremento pode consumir estoque sem criar o pedido completo.
 - A configuração do banco e a porta da API estão fixas em `cmd/api/main.go`.
 - As migrations precisam ser aplicadas manualmente; o `docker-compose.yml` apenas inicializa o PostgreSQL.
-- Não há testes automatizados no repositório; o script existente exercita concorrência contra a aplicação e o banco em execução.
+- Não há testes automatizados no repositório; os scripts existentes exercitam cenários contra a aplicação e o banco em execução.
 - O `README.md` da raiz ainda está vazio.
-
-## Próximo problema candidato
-
-Investigar a falta de atomicidade entre o decremento do estoque e a criação do pedido.
-
-Antes de escolher uma solução, o problema deve ser reproduzido de forma controlada, com evidências do estado inconsistente. Depois devem ser comparadas as alternativas e seus trade-offs, sem assumir antecipadamente uma decisão arquitetural.
