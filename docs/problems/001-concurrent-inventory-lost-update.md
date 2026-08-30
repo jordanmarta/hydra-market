@@ -22,7 +22,7 @@ controle de versão ou atualização atômica do estoque.
 
 Script utilizado:
 
-./scripts/concurrent-orders.sh
+./scripts/001-concurrent-orders.sh
 
 O script:
 
