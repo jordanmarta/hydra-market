@@ -18,6 +18,8 @@ O objetivo é documentar:
 
 | # | Problem | Concepts |
 |---|---|---|
+| 001 | [Lost update concorrente no estoque](problems/001-concurrent-inventory-lost-update.md) | Race condition, lost update, atomic conditional update |
+| 002 | [Falta de atomicidade entre estoque e pedido](problems/002-order-atomicity.md) | ACID, transaction boundary, commit, rollback |
 
 ## Architecture Decisions
 

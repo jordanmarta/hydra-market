@@ -2,6 +2,7 @@ package order
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -12,17 +13,20 @@ import (
 var ErrInsufficientStock = errors.New("insufficient stock")
 
 type Service struct {
+	db                  *sql.DB
 	orderRepository     *Repository
 	productRepository   *product.Repository
 	inventoryRepository *inventory.Repository
 }
 
 func NewService(
+	db *sql.DB,
 	orderRepository *Repository,
 	productRepository *product.Repository,
 	inventoryRepository *inventory.Repository,
 ) *Service {
 	return &Service{
+		db:                  db,
 		orderRepository:     orderRepository,
 		productRepository:   productRepository,
 		inventoryRepository: inventoryRepository,
@@ -39,8 +43,15 @@ func (s *Service) Create(ctx context.Context, productID int64, quantity int) (*O
 		return nil, fmt.Errorf("get product: %w", err)
 	}
 
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	stockDecreased, err := s.inventoryRepository.DecreaseStock(
 		ctx,
+		tx,
 		productID,
 		quantity,
 	)
@@ -64,8 +75,12 @@ func (s *Service) Create(ctx context.Context, productID int64, quantity int) (*O
 		},
 	}
 
-	if err := s.orderRepository.Create(ctx, order); err != nil {
+	if err := s.orderRepository.Create(ctx, tx, order); err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return order, nil

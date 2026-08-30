@@ -30,9 +30,10 @@ func main() {
 
 	productRepository := product.NewRepository(db)
 	inventoryRepository := inventory.NewRepository(db)
-	orderRepository := order.NewRepository(db)
+	orderRepository := order.NewRepository()
 
 	orderService := order.NewService(
+		db,
 		orderRepository,
 		productRepository,
 		inventoryRepository,

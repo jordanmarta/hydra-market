@@ -26,5 +26,5 @@ done
 
 go run ./cmd/api
 go test ./...
-./scripts/concurrent-orders.sh
+./scripts/001-concurrent-orders.sh
 ```
