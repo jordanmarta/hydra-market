@@ -74,11 +74,11 @@ A validação e o decremento agora são uma operação atômica coordenada pelo 
 
 ## Problema 002 — concluído
 
-O fluxo de compra decrementava o estoque antes de persistir o pedido, sem uma transação compartilhada. Uma falha controlada no `INSERT INTO orders` produziu HTTP 500, manteve a quantidade de pedidos e reduziu o estoque de 10 para 9.
+O fluxo de compra decrementava o estoque antes de persistir o pedido, sem uma transação compartilhada. Uma falha controlada no `INSERT INTO orders` produziu HTTP 500, manteve a quantidade de itens de pedido e reduziu o estoque de 10 para 9.
 
 A solução foi criar uma transação local PostgreSQL na boundary do `order.Service.Create`. O service inicia a transação, os repositories de inventory e order executam todas as escritas por meio da mesma `*sql.Tx`, e o commit ocorre somente depois da criação completa do pedido. Qualquer erro provoca rollback.
 
-Após a correção, o mesmo experimento produziu HTTP 500, manteve a quantidade de pedidos e preservou o estoque em 10. O fluxo normal de compra também foi validado. A investigação completa está em `docs/problems/002-order-atomicity.md`.
+Após a correção, o mesmo experimento produziu HTTP 500, manteve a quantidade de itens de pedido e preservou o estoque em 10. O fluxo normal de compra também foi validado. A investigação completa está em `docs/problems/002-order-atomicity.md`.
 
 ## Dívidas e problemas conhecidos
 

@@ -56,13 +56,13 @@ igual a 10:
 
 ```text
 Before:
-  Stock:  10
-  Orders: 165
+  Stock:       10
+  Order items: 165
 
 After:
   HTTP status: 500
   Stock:       9
-  Orders:      165
+  Order items: 165
 
 INCONSISTENCY CONFIRMED
 The order failed, no order item was created, and inventory decreased.
@@ -207,13 +207,13 @@ O mesmo script e a mesma falha controlada usados na reprodução foram executado
 
 ```text
 Before:
-  Stock:  10
-  Orders: 165
+  Stock:       10
+  Order items: 165
 
 After:
   HTTP status: 500
   Stock:       10
-  Orders:      165
+  Order items: 165
 ```
 
 O pedido continuou falhando com HTTP 500 e nenhum item foi criado, mas o estoque permaneceu em 10. O rollback preservou o estado anterior.

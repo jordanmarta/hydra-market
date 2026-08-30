@@ -71,15 +71,15 @@ fi
 STOCK_BEFORE=$(db_query \
   "SELECT quantity FROM inventory WHERE product_id = $PRODUCT_ID;")
 
-ORDERS_BEFORE=$(db_query \
+ORDER_ITEMS_BEFORE=$(db_query \
   "SELECT COUNT(*)
    FROM order_items
    WHERE product_id = $PRODUCT_ID;")
 
 echo
 echo "Before:"
-echo "  Stock:  $STOCK_BEFORE"
-echo "  Orders: $ORDERS_BEFORE"
+echo "  Stock:       $STOCK_BEFORE"
+echo "  Order items: $ORDER_ITEMS_BEFORE"
 echo
 echo "Installing controlled failure..."
 
@@ -103,7 +103,7 @@ HTTP_STATUS=$(curl -sS -o /dev/null \
 STOCK_AFTER=$(db_query \
   "SELECT quantity FROM inventory WHERE product_id = $PRODUCT_ID;")
 
-ORDERS_AFTER=$(db_query \
+ORDER_ITEMS_AFTER=$(db_query \
   "SELECT COUNT(*)
    FROM order_items
    WHERE product_id = $PRODUCT_ID;")
@@ -112,12 +112,12 @@ echo
 echo "After:"
 echo "  HTTP status: $HTTP_STATUS"
 echo "  Stock:       $STOCK_AFTER"
-echo "  Orders:      $ORDERS_AFTER"
+echo "  Order items: $ORDER_ITEMS_AFTER"
 echo
 
 if [[ "$HTTP_STATUS" == "500" \
    && "$STOCK_BEFORE" -eq "$INITIAL_STOCK" \
-   && "$ORDERS_AFTER" -eq "$ORDERS_BEFORE" ]]; then
+   && "$ORDER_ITEMS_AFTER" -eq "$ORDER_ITEMS_BEFORE" ]]; then
   if [[ "$STOCK_AFTER" -eq "$STOCK_BEFORE" ]]; then
     echo "ATOMICITY PRESERVED"
     echo "The order failed and the transaction restored the previous inventory."
