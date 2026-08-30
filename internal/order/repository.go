@@ -6,24 +6,20 @@ import (
 	"fmt"
 )
 
-type Repository struct {
-	db *sql.DB
+type Repository struct{}
+
+func NewRepository() *Repository {
+	return &Repository{}
 }
 
-func NewRepository(db *sql.DB) *Repository {
-	return &Repository{
-		db: db,
-	}
-}
-
-func (r *Repository) Create(ctx context.Context, order *Order) error {
+func (r *Repository) Create(ctx context.Context, tx *sql.Tx, order *Order) error {
 	query := `
 		INSERT INTO orders (status)
 		VALUES ($1)
 		RETURNING id;
 	`
 
-	if err := r.db.QueryRowContext(ctx, query, order.Status).Scan(&order.ID); err != nil {
+	if err := tx.QueryRowContext(ctx, query, order.Status).Scan(&order.ID); err != nil {
 		return fmt.Errorf("create order: %w", err)
 	}
 
@@ -42,7 +38,7 @@ func (r *Repository) Create(ctx context.Context, order *Order) error {
 			RETURNING id;
 		`
 
-		if err := r.db.QueryRowContext(
+		if err := tx.QueryRowContext(
 			ctx,
 			itemQuery,
 			order.ID,

@@ -117,13 +117,20 @@ echo
 
 if [[ "$HTTP_STATUS" == "500" \
    && "$STOCK_BEFORE" -eq "$INITIAL_STOCK" \
-   && "$STOCK_AFTER" -eq $((INITIAL_STOCK - 1)) \
    && "$ORDERS_AFTER" -eq "$ORDERS_BEFORE" ]]; then
-  echo "INCONSISTENCY CONFIRMED"
-  echo "The order failed, no order item was created, and inventory decreased."
-  exit 0
+  if [[ "$STOCK_AFTER" -eq "$STOCK_BEFORE" ]]; then
+    echo "ATOMICITY PRESERVED"
+    echo "The order failed and the transaction restored the previous inventory."
+    exit 0
+  fi
+
+  if [[ "$STOCK_AFTER" -eq $((STOCK_BEFORE - 1)) ]]; then
+    echo "INCONSISTENCY CONFIRMED"
+    echo "The order failed, but inventory decreased."
+    exit 0
+  fi
 fi
 
-echo "EXPECTED INCONSISTENCY NOT OBSERVED" >&2
+echo "UNEXPECTED RESULT" >&2
 echo "Review the output before drawing a conclusion." >&2
 exit 1

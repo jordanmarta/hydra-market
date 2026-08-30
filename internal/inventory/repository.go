@@ -64,6 +64,7 @@ func (r *Repository) GetStock(
 
 func (r *Repository) DecreaseStock(
 	ctx context.Context,
+	tx *sql.Tx,
 	productID int64,
 	quantity int,
 ) (bool, error) {
@@ -79,7 +80,7 @@ func (r *Repository) DecreaseStock(
 
 	var remainingStock int
 
-	err := r.db.QueryRowContext(
+	err := tx.QueryRowContext(
 		ctx,
 		query,
 		productID,
