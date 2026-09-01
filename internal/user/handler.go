@@ -16,7 +16,7 @@ type createUserRequest struct {
 	Address string `json:"address"`
 }
 
-type createUserResponse struct {
+type userResponse struct {
 	ID      int64  `json:"id"`
 	Name    string `json:"name"`
 	Email   string `json:"email"`
@@ -48,7 +48,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := createUserResponse{
+	response := userResponse{
 		ID:      user.ID,
 		Name:    user.Name,
 		Email:   user.Email,
@@ -76,8 +76,16 @@ func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	response := userResponse{
+		ID:      user.ID,
+		Name:    user.Name,
+		Email:   user.Email,
+		Address: user.Address,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(user); err != nil {
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		return
 	}
 }
