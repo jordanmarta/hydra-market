@@ -14,12 +14,12 @@ func NewRepository() *Repository {
 
 func (r *Repository) Create(ctx context.Context, tx *sql.Tx, order *Order) error {
 	query := `
-		INSERT INTO orders (status)
-		VALUES ($1)
+		INSERT INTO orders (status, user_id)
+		VALUES ($1, $2)
 		RETURNING id;
 	`
 
-	if err := tx.QueryRowContext(ctx, query, order.Status).Scan(&order.ID); err != nil {
+	if err := tx.QueryRowContext(ctx, query, order.Status, order.UserID).Scan(&order.ID); err != nil {
 		return fmt.Errorf("create order: %w", err)
 	}
 

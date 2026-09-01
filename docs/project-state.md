@@ -12,6 +12,7 @@ O código é organizado por domínio:
 - `internal/product`: modelo, handler HTTP e repository de produtos;
 - `internal/inventory`: modelo, handler HTTP e repository de estoque;
 - `internal/order`: modelo, handler HTTP, service de compra e repository de pedidos;
+- `internal/user`: modelo, handler HTTP e repository de usuários;
 - `db/migrations`: definição incremental do schema PostgreSQL;
 - `scripts`: experimentos e reproduções executáveis;
 - `docs/problems`: registro de problemas técnicos investigados;
@@ -29,6 +30,8 @@ A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui u
 - rejeição de compra sem estoque suficiente;
 - decremento atômico de estoque sob concorrência;
 - criação transacional de estoque, pedido e itens.
+- cadastro e consulta de usuários;
+- associação de pedidos a usuários;
 
 ## Endpoints
 
@@ -37,21 +40,26 @@ A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui u
 | `GET` | `/health` | Retorna o estado básico da API. |
 | `POST` | `/products` | Cria um produto. |
 | `PUT` | `/inventory/{id}` | Define a quantidade em estoque do produto. |
-| `POST` | `/orders` | Cria um pedido para um produto e uma quantidade. |
+| `POST` | `/orders` | Cria um pedido associado a um usuário para um produto e uma quantidade. |
+| `POST` | `/users` | Cria um usuário. |
+| `GET` | `/users/{id}` | Consulta um usuário pelo identificador. |
 
 ## Fluxo atual de compra
 
-1. `POST /orders` recebe `product_id` e `quantity`.
+1. `POST /orders` recebe `user_id`, `product_id` e `quantity`.
 2. O service rejeita quantidades menores ou iguais a zero.
 3. O produto é consultado para obter identificador, preço e moeda.
-4. O service inicia uma transação PostgreSQL.
-5. O estoque é decrementado por um `UPDATE` condicional usando a transação.
-6. Se não houver estoque suficiente, a API retorna `409 Conflict` e a transação é desfeita.
-7. Um pedido com status `CREATED` é inserido em `orders` usando a mesma transação.
-8. Um item com produto, quantidade, preço unitário e moeda é inserido em `order_items` usando a mesma transação.
-9. O service confirma a transação e o pedido criado é retornado com `201 Created`.
+4. O usuário é consultado e precisa existir.
+5. O service inicia uma transação PostgreSQL.
+6. O estoque é decrementado por um `UPDATE` condicional usando a transação.
+7. Se não houver estoque suficiente, a API retorna `409 Conflict` e a transação é desfeita.
+8. Um pedido associado ao usuário, com status `CREATED`, é inserido em `orders` usando a mesma transação.
+9. Um item com produto, quantidade, preço unitário e moeda é inserido em `order_items`.
+10. O service confirma a transação e o pedido criado é retornado com `201 Created`.
 
 Qualquer falha depois do início da transação provoca rollback e preserva o estado anterior.
+
+O campo `orders.user_id` foi adicionado como nullable para preservar pedidos históricos existentes, mas o fluxo atual da aplicação exige um usuário válido para novos pedidos.
 
 O modelo de pedido suporta uma lista de itens, mas o endpoint atual cria somente um item por pedido.
 

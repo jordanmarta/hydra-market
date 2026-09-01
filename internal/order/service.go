@@ -8,6 +8,7 @@ import (
 
 	"github.com/jordanmarta/hydra-market.git/internal/inventory"
 	"github.com/jordanmarta/hydra-market.git/internal/product"
+	"github.com/jordanmarta/hydra-market.git/internal/user"
 )
 
 var ErrInsufficientStock = errors.New("insufficient stock")
@@ -17,6 +18,7 @@ type Service struct {
 	orderRepository     *Repository
 	productRepository   *product.Repository
 	inventoryRepository *inventory.Repository
+	userRepository      *user.Repository
 }
 
 func NewService(
@@ -24,16 +26,18 @@ func NewService(
 	orderRepository *Repository,
 	productRepository *product.Repository,
 	inventoryRepository *inventory.Repository,
+	userRepository *user.Repository,
 ) *Service {
 	return &Service{
 		db:                  db,
 		orderRepository:     orderRepository,
 		productRepository:   productRepository,
 		inventoryRepository: inventoryRepository,
+		userRepository:      userRepository,
 	}
 }
 
-func (s *Service) Create(ctx context.Context, productID int64, quantity int) (*Order, error) {
+func (s *Service) Create(ctx context.Context, productID int64, userID int64, quantity int) (*Order, error) {
 	if quantity <= 0 {
 		return nil, fmt.Errorf("quantity must be greater than zero")
 	}
@@ -41,6 +45,11 @@ func (s *Service) Create(ctx context.Context, productID int64, quantity int) (*O
 	product, err := s.productRepository.GetByID(ctx, productID)
 	if err != nil {
 		return nil, fmt.Errorf("get product: %w", err)
+	}
+
+	user, err := s.userRepository.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -64,6 +73,7 @@ func (s *Service) Create(ctx context.Context, productID int64, quantity int) (*O
 	}
 
 	order := &Order{
+		UserID: user.ID,
 		Status: "CREATED",
 		Items: []Item{
 			{
