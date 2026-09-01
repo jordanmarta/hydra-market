@@ -21,6 +21,11 @@ type Service struct {
 	userRepository      *user.Repository
 }
 
+type CreateItemInput struct {
+	ProductID int64
+	Quantity  int
+}
+
 func NewService(
 	db *sql.DB,
 	orderRepository *Repository,
@@ -37,19 +42,39 @@ func NewService(
 	}
 }
 
-func (s *Service) Create(ctx context.Context, productID int64, userID int64, quantity int) (*Order, error) {
-	if quantity <= 0 {
-		return nil, fmt.Errorf("quantity must be greater than zero")
-	}
+func (s *Service) Create(
+	ctx context.Context,
+	userID int64,
+	inputItems []CreateItemInput,
+) (*Order, error) {
 
-	product, err := s.productRepository.GetByID(ctx, productID)
-	if err != nil {
-		return nil, fmt.Errorf("get product: %w", err)
+	if len(inputItems) == 0 {
+		return nil, fmt.Errorf("order must contain at least one item")
 	}
 
 	user, err := s.userRepository.GetByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
+	}
+
+	items := make([]Item, 0, len(inputItems))
+
+	for _, input := range inputItems {
+		if input.Quantity <= 0 {
+			return nil, fmt.Errorf("quantity must be greater than zero")
+		}
+
+		product, err := s.productRepository.GetByID(ctx, input.ProductID)
+		if err != nil {
+			return nil, fmt.Errorf("get product %d: %w", input.ProductID, err)
+		}
+
+		items = append(items, Item{
+			ProductID:    product.ID,
+			Quantity:     input.Quantity,
+			UnitPrice:    product.Price,
+			CurrencyCode: product.CurrencyCode,
+		})
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -58,31 +83,26 @@ func (s *Service) Create(ctx context.Context, productID int64, userID int64, qua
 	}
 	defer tx.Rollback()
 
-	stockDecreased, err := s.inventoryRepository.DecreaseStock(
-		ctx,
-		tx,
-		productID,
-		quantity,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("decreased stock: %w", err)
-	}
+	for _, item := range items {
+		stockDecreased, err := s.inventoryRepository.DecreaseStock(
+			ctx,
+			tx,
+			item.ProductID,
+			item.Quantity,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("decrease stock: %w", err)
+		}
 
-	if !stockDecreased {
-		return nil, ErrInsufficientStock
+		if !stockDecreased {
+			return nil, ErrInsufficientStock
+		}
 	}
 
 	order := &Order{
 		UserID: user.ID,
 		Status: "CREATED",
-		Items: []Item{
-			{
-				ProductID:    product.ID,
-				Quantity:     quantity,
-				UnitPrice:    product.Price,
-				CurrencyCode: product.CurrencyCode,
-			},
-		},
+		Items:  items,
 	}
 
 	if err := s.orderRepository.Create(ctx, tx, order); err != nil {

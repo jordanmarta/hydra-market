@@ -1,0 +1,213 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-08-31T00:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v2024.1.0",
+  "resources": [
+    {
+      "_id": "wrk_hydra_market",
+      "parentId": null,
+      "modified": 1756665600000,
+      "created": 1756665600000,
+      "name": "Hydra Market API",
+      "description": "Coleção de endpoints da API Hydra Market",
+      "scope": "collection",
+      "_type": "workspace"
+    },
+    {
+      "_id": "env_hydra_market",
+      "parentId": "wrk_hydra_market",
+      "modified": 1756665600000,
+      "created": 1756665600000,
+      "name": "Base environment",
+      "data": {
+        "base_url": "http://localhost:8080",
+        "user_id": "1",
+        "product_id": "1",
+        "inventory_id": "1"
+      },
+      "dataPropertyOrder": {
+        "&": [
+          "base_url",
+          "user_id",
+          "product_id",
+          "inventory_id"
+        ]
+      },
+      "color": null,
+      "isPrivate": false,
+      "metaSortKey": 0,
+      "_type": "environment"
+    },
+    {
+      "_id": "req_health",
+      "parentId": "wrk_hydra_market",
+      "modified": 1756665600000,
+      "created": 1756665600000,
+      "name": "Health",
+      "description": "Verifica se a API está viva",
+      "method": "GET",
+      "url": "http://localhost:8080/health",
+      "body": {},
+      "parameters": [],
+      "headers": [],
+      "authentication": {},
+      "metaSortKey": -1000000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_users_create",
+      "parentId": "wrk_hydra_market",
+      "modified": 1756665600000,
+      "created": 1756665600000,
+      "name": "Create User",
+      "description": "Cria um usuário",
+      "method": "POST",
+      "url": "http://localhost:8080/users",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"Ana Souza\",\n  \"email\": \"ana.souza@hydra.com\",\n  \"address\": \"Rua das Flores, 120 - Centro, São Paulo - SP\"\n}"
+      },
+      "parameters": [],
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": -900000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_users_get_by_id",
+      "parentId": "wrk_hydra_market",
+      "modified": 1756665600000,
+      "created": 1756665600000,
+      "name": "Get User By ID",
+      "description": "Busca usuário pelo id",
+      "method": "GET",
+      "url": "http://localhost:8080/users/1",
+      "body": {},
+      "parameters": [],
+      "headers": [],
+      "authentication": {},
+      "metaSortKey": -800000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_products_create",
+      "parentId": "wrk_hydra_market",
+      "modified": 1756665600000,
+      "created": 1756665600000,
+      "name": "Create Product",
+      "description": "Cria um produto",
+      "method": "POST",
+      "url": "http://localhost:8080/products",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"Teclado Mecânico 60% RGB\",\n  \"description\": \"Teclado mecânico para produtividade e games com ilumição RGB.\",\n  \"price\": 32990,\n  \"currency_code\": \"BRL\"\n}"
+      },
+      "parameters": [],
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": -700000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_inventory_set_stock",
+      "parentId": "wrk_hydra_market",
+      "modified": 1756665600000,
+      "created": 1756665600000,
+      "name": "Set Inventory Stock",
+      "description": "Atualiza o estoque de um produto pelo id",
+      "method": "PUT",
+      "url": "http://localhost:8080/inventory/1",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"quantity\": 42\n}"
+      },
+      "parameters": [],
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": -600000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_orders_create",
+      "parentId": "wrk_hydra_market",
+      "modified": 1756665600000,
+      "created": 1756665600000,
+      "name": "Create Order",
+      "description": "Cria um pedido com itens",
+      "method": "POST",
+      "url": "http://localhost:8080/orders",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"user_id\": 1,\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 2\n    },\n    {\n      \"product_id\": 2,\n      \"quantity\": 1\n    }\n  ]\n}"
+      },
+      "parameters": [],
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": -500000,
+      "isPrivate": false,
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    }
+  ]
+}
