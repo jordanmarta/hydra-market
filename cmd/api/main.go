@@ -58,6 +58,7 @@ func main() {
 	mux.HandleFunc("PUT /inventory/{id}", inventoryHandler.SetStock)
 	mux.HandleFunc("POST /orders", orderHandler.Create)
 	mux.HandleFunc("POST /users", userHandler.Create)
+	mux.HandleFunc("GET /users/{id}", userHandler.GetByID)
 
 	fmt.Println("hydra-market listening on :8080")
 
