@@ -12,6 +12,7 @@ type Handler struct {
 
 type createOrderRequest struct {
 	ProductID int64 `json:"product_id"`
+	UserID    int64 `json:"user_id"`
 	Quantity  int   `json:"quantity"`
 }
 
@@ -32,6 +33,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	order, err := h.service.Create(
 		r.Context(),
 		request.ProductID,
+		request.UserID,
 		request.Quantity,
 	)
 	if err != nil {

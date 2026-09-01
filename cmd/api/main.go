@@ -10,6 +10,7 @@ import (
 	"github.com/jordanmarta/hydra-market.git/internal/inventory"
 	"github.com/jordanmarta/hydra-market.git/internal/order"
 	"github.com/jordanmarta/hydra-market.git/internal/product"
+	"github.com/jordanmarta/hydra-market.git/internal/user"
 )
 
 func main() {
@@ -31,17 +32,20 @@ func main() {
 	productRepository := product.NewRepository(db)
 	inventoryRepository := inventory.NewRepository(db)
 	orderRepository := order.NewRepository()
+	userRepository := user.NewRepository(db)
 
 	orderService := order.NewService(
 		db,
 		orderRepository,
 		productRepository,
 		inventoryRepository,
+		userRepository,
 	)
 
 	orderHandler := order.NewHandler(orderService)
 	productHandler := product.NewHandler(productRepository)
 	inventoryHandler := inventory.NewHandler(inventoryRepository)
+	userHandler := user.NewHandler(userRepository)
 
 	mux := http.NewServeMux()
 
@@ -53,6 +57,7 @@ func main() {
 	mux.HandleFunc("POST /products", productHandler.Create)
 	mux.HandleFunc("PUT /inventory/{id}", inventoryHandler.SetStock)
 	mux.HandleFunc("POST /orders", orderHandler.Create)
+	mux.HandleFunc("POST /users", userHandler.Create)
 
 	fmt.Println("hydra-market listening on :8080")
 
