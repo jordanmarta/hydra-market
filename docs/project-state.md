@@ -40,7 +40,7 @@ A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui u
 | `GET` | `/health` | Retorna o estado básico da API. |
 | `POST` | `/products` | Cria um produto. |
 | `PUT` | `/inventory/{id}` | Define a quantidade em estoque do produto. |
-| `POST` | `/orders` | Cria um pedido associado a um usuário para um produto e uma quantidade.
+| `POST` | `/orders` | Cria um pedido associado a um usuário para um produto e uma quantidade. |
 | `POST` | `/users` | Cria um usuário. |
 | `GET` | `/users/{id}` | Consulta um usuário pelo identificador. |
 
