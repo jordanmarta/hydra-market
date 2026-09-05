@@ -10,10 +10,14 @@ type Handler struct {
 	service *Service
 }
 
-type createOrderRequest struct {
+type createOrderItemRequest struct {
 	ProductID int64 `json:"product_id"`
-	UserID    int64 `json:"user_id"`
 	Quantity  int   `json:"quantity"`
+}
+
+type createOrderRequest struct {
+	UserID int64                    `json:"user_id"`
+	Items  []createOrderItemRequest `json:"items"`
 }
 
 func NewHandler(service *Service) *Handler {
@@ -30,12 +34,20 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	items := make([]CreateItemInput, 0, len(request.Items))
+
+	for _, item := range request.Items {
+		items = append(items, CreateItemInput{
+			ProductID: item.ProductID,
+			Quantity:  item.Quantity,
+		})
+	}
 	order, err := h.service.Create(
 		r.Context(),
-		request.ProductID,
 		request.UserID,
-		request.Quantity,
+		items,
 	)
+
 	if err != nil {
 		if errors.Is(err, ErrInsufficientStock) {
 			http.Error(w, "insufficient stock", http.StatusConflict)

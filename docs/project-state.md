@@ -25,8 +25,8 @@ A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui u
 - health check da API;
 - criação de produto;
 - definição ou substituição da quantidade em estoque de um produto;
-- criação de pedido com um único produto;
-- captura de preço e moeda do produto no item do pedido;
+- criação de pedido com múltiplos produtos;
+- captura de preço e moeda de cada produto no item do pedido;
 - rejeição de compra sem estoque suficiente;
 - decremento atômico de estoque sob concorrência;
 - criação transacional de estoque, pedido e itens.
@@ -40,28 +40,27 @@ A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui u
 | `GET` | `/health` | Retorna o estado básico da API. |
 | `POST` | `/products` | Cria um produto. |
 | `PUT` | `/inventory/{id}` | Define a quantidade em estoque do produto. |
-| `POST` | `/orders` | Cria um pedido associado a um usuário para um produto e uma quantidade. |
+| `POST` | `/orders` | Cria um pedido associado a um usuário contendo um ou mais produtos, cada um com `product_id` e `quantity`. |
 | `POST` | `/users` | Cria um usuário. |
 | `GET` | `/users/{id}` | Consulta um usuário pelo identificador. |
 
 ## Fluxo atual de compra
 
-1. `POST /orders` recebe `user_id`, `product_id` e `quantity`.
-2. O service rejeita quantidades menores ou iguais a zero.
-3. O produto é consultado para obter identificador, preço e moeda.
-4. O usuário é consultado e precisa existir.
-5. O service inicia uma transação PostgreSQL.
-6. O estoque é decrementado por um `UPDATE` condicional usando a transação.
-7. Se não houver estoque suficiente, a API retorna `409 Conflict` e a transação é desfeita.
-8. Um pedido associado ao usuário, com status `CREATED`, é inserido em `orders` usando a mesma transação.
-9. Um item com produto, quantidade, preço unitário e moeda é inserido em `order_items`.
-10. O service confirma a transação e o pedido criado é retornado com `201 Created`.
+1. `POST /orders` recebe `user_id` e `items[]`.
+2. Cada item do payload possui `product_id` e `quantity`.
+3. O service rejeita quantidades menores ou iguais a zero.
+4. Todos os produtos da lista são consultados antes da transação para obter identificador, preço e moeda.
+5. O usuário é consultado e precisa existir.
+6. O service inicia uma transação PostgreSQL.
+7. O estoque de cada item é decrementado usando a mesma transação.
+8. Se qualquer item não tiver estoque suficiente, a API retorna `409 Conflict` e toda a transação é desfeita.
+9. Uma única order associada ao usuário, com status `CREATED`, é inserida em `orders`.
+10. Todos os itens são persistidos em `order_items` com produto, quantidade, preço unitário e moeda.
+11. O commit ocorre apenas após a criação completa do pedido e o service retorna o pedido com `201 Created`.
 
 Qualquer falha depois do início da transação provoca rollback e preserva o estado anterior.
 
 O campo `orders.user_id` foi adicionado como nullable para preservar pedidos históricos existentes, mas o fluxo atual da aplicação exige um usuário válido para novos pedidos.
-
-O modelo de pedido suporta uma lista de itens, mas o endpoint atual cria somente um item por pedido.
 
 ## Problema 001 — concluído
 
