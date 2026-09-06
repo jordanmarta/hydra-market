@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jordanmarta/hydra-market.git/internal/cart"
 	"github.com/jordanmarta/hydra-market.git/internal/inventory"
 	"github.com/jordanmarta/hydra-market.git/internal/order"
 	"github.com/jordanmarta/hydra-market.git/internal/product"
@@ -33,6 +34,14 @@ func main() {
 	inventoryRepository := inventory.NewRepository(db)
 	orderRepository := order.NewRepository()
 	userRepository := user.NewRepository(db)
+	cartRepository := cart.NewRepository(db)
+
+	cartService := cart.NewService(
+		db,
+		cartRepository,
+		productRepository,
+		userRepository,
+	)
 
 	orderService := order.NewService(
 		db,
@@ -42,6 +51,7 @@ func main() {
 		userRepository,
 	)
 
+	cartHandler := cart.NewHandler(cartService)
 	orderHandler := order.NewHandler(orderService)
 	productHandler := product.NewHandler(productRepository)
 	inventoryHandler := inventory.NewHandler(inventoryRepository)
@@ -53,6 +63,32 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("hydra is alive"))
 	})
+
+	// Handlers CART
+	mux.HandleFunc(
+		"POST /carts",
+		cartHandler.Create,
+	)
+
+	mux.HandleFunc(
+		"GET /carts/{cartId}",
+		cartHandler.GetByID,
+	)
+
+	mux.HandleFunc(
+		"GET /carts",
+		cartHandler.GetActiveByUserID,
+	)
+
+	mux.HandleFunc(
+		"PUT /carts/{cartId}/items/{productId}",
+		cartHandler.UpsertItemQuantity,
+	)
+
+	mux.HandleFunc(
+		"DELETE /carts/{cartId}/items/{productId}",
+		cartHandler.DeleteItem,
+	)
 
 	mux.HandleFunc("POST /products", productHandler.Create)
 	mux.HandleFunc("PUT /inventory/{id}", inventoryHandler.SetStock)

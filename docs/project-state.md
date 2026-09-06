@@ -13,25 +13,38 @@ O código é organizado por domínio:
 - `internal/inventory`: modelo, handler HTTP e repository de estoque;
 - `internal/order`: modelo, handler HTTP, service de compra e repository de pedidos;
 - `internal/user`: modelo, handler HTTP e repository de usuários;
+- `internal/cart`: modelo, handler HTTP, service e repository de carrinhos;
 - `db/migrations`: definição incremental do schema PostgreSQL;
 - `scripts`: experimentos e reproduções executáveis;
 - `docs/problems`: registro de problemas técnicos investigados;
 - `docs/adr`: espaço reservado para decisões arquiteturais.
 
-A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui uma camada de service para coordenar produto, estoque e persistência do pedido. Esse service também controla a transação local PostgreSQL do caso de uso, compartilhada pelos repositories por meio de `*sql.Tx`. A composição é manual em `cmd/api/main.go`. A conexão com o banco e a porta HTTP estão fixas no código.
+A aplicação usa repositories para acesso ao banco.
+
+Os fluxos de pedido e carrinho possuem camadas de service para coordenar regras de negócio e transações PostgreSQL.
+
+A composição das dependências é manual em `cmd/api/main.go`.
+
+A conexão com o banco e a porta HTTP estão fixas no código.
 
 ## Funcionalidades existentes
 
 - health check da API;
 - criação de produto;
 - definição ou substituição da quantidade em estoque de um produto;
+- cadastro e consulta de usuários;
+- associação de pedidos a usuários;
 - criação de pedido com múltiplos produtos;
 - captura de preço e moeda de cada produto no item do pedido;
 - rejeição de compra sem estoque suficiente;
 - decremento atômico de estoque sob concorrência;
-- criação transacional de estoque, pedido e itens.
-- cadastro e consulta de usuários;
-- associação de pedidos a usuários;
+- criação transacional de estoque, pedido e itens;
+- criação de carrinho associado a usuário;
+- criação obrigatória de carrinho com pelo menos um item;
+- consulta de carrinho por identificador;
+- consulta do carrinho ativo de um usuário;
+- inclusão ou substituição da quantidade de produtos no carrinho;
+- remoção de produtos do carrinho.
 
 ## Endpoints
 
@@ -40,9 +53,44 @@ A aplicação usa repositories para acesso ao banco. O fluxo de pedidos possui u
 | `GET` | `/health` | Retorna o estado básico da API. |
 | `POST` | `/products` | Cria um produto. |
 | `PUT` | `/inventory/{id}` | Define a quantidade em estoque do produto. |
-| `POST` | `/orders` | Cria um pedido associado a um usuário contendo um ou mais produtos, cada um com `product_id` e `quantity`. |
+| `POST` | `/orders` | Cria um pedido associado a um usuário contendo um ou mais produtos. |
 | `POST` | `/users` | Cria um usuário. |
 | `GET` | `/users/{id}` | Consulta um usuário pelo identificador. |
+| `POST` | `/carts` | Cria um carrinho associado a um usuário contendo um ou mais itens. |
+| `GET` | `/carts/{cartId}` | Consulta um carrinho pelo identificador. |
+| `GET` | `/carts?user_id={userId}&status=ACTIVE` | Consulta o carrinho ativo de um usuário. |
+| `PUT` | `/carts/{cartId}/items/{productId}` | Adiciona um produto ao carrinho ou substitui sua quantidade atual. |
+| `DELETE` | `/carts/{cartId}/items/{productId}` | Remove um produto do carrinho. |
+
+## Fluxo atual de carrinho
+
+1. `POST /carts` recebe `user_id` e `items[]`.
+2. O carrinho precisa ser criado com pelo menos um item.
+3. O usuário informado precisa existir.
+4. A aplicação verifica se o usuário já possui um carrinho com status `ACTIVE`.
+5. Se já existir um carrinho ativo, a criação é rejeitada com `409 Conflict`.
+6. Cada item precisa possuir `product_id` e `quantity`.
+7. O service rejeita quantidades menores ou iguais a zero.
+8. Produtos duplicados no payload de criação são rejeitados.
+9. Todos os produtos informados precisam existir.
+10. O service inicia uma transação PostgreSQL.
+11. O carrinho é criado com status `ACTIVE`.
+12. Os primeiros itens são inseridos em `cart_items`.
+13. O commit ocorre somente depois da criação completa do carrinho e de seus itens.
+
+Qualquer falha depois do início da transação provoca rollback e impede que seja persistido um carrinho parcialmente criado.
+
+A atualização de quantidade utiliza `PUT /carts/{cartId}/items/{productId}` com semântica de upsert:
+
+- se o produto ainda não estiver no carrinho, o item é inserido;
+- se o produto já estiver no carrinho, sua quantidade é substituída pelo valor informado;
+- quantidade zero ou negativa é rejeitada.
+
+A remoção de um produto é uma operação explícita por meio de `DELETE /carts/{cartId}/items/{productId}`.
+
+Os itens do carrinho armazenam produto e quantidade.
+
+Preço e moeda não são persistidos no carrinho e continuam sendo capturados no momento da criação do pedido.
 
 ## Fluxo atual de compra
 
@@ -77,15 +125,27 @@ WHERE product_id = $1
 RETURNING quantity;
 ```
 
-A validação e o decremento agora são uma operação atômica coordenada pelo banco, inclusive quando existem múltiplas instâncias da aplicação. A investigação completa está em `docs/problems/001-concurrent-inventory-lost-update.md`.
+A validação e o decremento agora são uma operação atômica coordenada pelo banco, inclusive quando existem múltiplas instâncias da aplicação.
+
+A investigação completa está em `docs/problems/001-concurrent-inventory-lost-update.md`.
 
 ## Problema 002 — concluído
 
-O fluxo de compra decrementava o estoque antes de persistir o pedido, sem uma transação compartilhada. Uma falha controlada no `INSERT INTO orders` produziu HTTP 500, manteve a quantidade de itens de pedido e reduziu o estoque de 10 para 9.
+O fluxo de compra decrementava o estoque antes de persistir o pedido, sem uma transação compartilhada.
 
-A solução foi criar uma transação local PostgreSQL na boundary do `order.Service.Create`. O service inicia a transação, os repositories de inventory e order executam todas as escritas por meio da mesma `*sql.Tx`, e o commit ocorre somente depois da criação completa do pedido. Qualquer erro provoca rollback.
+Uma falha controlada no `INSERT INTO orders` produziu HTTP 500, manteve a quantidade de itens de pedido e reduziu o estoque de 10 para 9.
 
-Após a correção, o mesmo experimento produziu HTTP 500, manteve a quantidade de itens de pedido e preservou o estoque em 10. O fluxo normal de compra também foi validado. A investigação completa está em `docs/problems/002-order-atomicity.md`.
+A solução foi criar uma transação local PostgreSQL na boundary do `order.Service.Create`.
+
+O service inicia a transação, os repositories de inventory e order executam todas as escritas por meio da mesma `*sql.Tx`, e o commit ocorre somente depois da criação completa do pedido.
+
+Qualquer erro provoca rollback.
+
+Após a correção, o mesmo experimento produziu HTTP 500, manteve a quantidade de itens de pedido e preservou o estoque em 10.
+
+O fluxo normal de compra também foi validado.
+
+A investigação completa está em `docs/problems/002-order-atomicity.md`.
 
 ## Dívidas e problemas conhecidos
 
@@ -93,3 +153,4 @@ Após a correção, o mesmo experimento produziu HTTP 500, manteve a quantidade 
 - As migrations precisam ser aplicadas manualmente; o `docker-compose.yml` apenas inicializa o PostgreSQL.
 - Não há testes automatizados no repositório; os scripts existentes exercitam cenários contra a aplicação e o banco em execução.
 - O `README.md` da raiz ainda está vazio.
+- A regra de apenas um carrinho `ACTIVE` por usuário é validada atualmente pela aplicação, mas ainda não é garantida por uma constraint no PostgreSQL.
